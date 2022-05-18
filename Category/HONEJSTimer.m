@@ -57,29 +57,32 @@ static int timerSafeMaxReachCountIdentifier = 0;
 
 #pragma - Private
 - (long)createTimer:(JSValue *)callBack ms:(double)ms repeats:(BOOL)repeats{
+    // 同一事件最多只允许创建 timerSafeMaxCount 个定时器
     if ([self.timers allKeys].count > timerSafeMaxCount) {
         return timerSafeMaxReachCountIdentifier;
     }
-    long identifier =  timerIdentifier;
-    timerIdentifier += 1;
-    [self performSelectorOnMainThread:@selector(haha) withObject:nil waitUntilDone:NO];
 
     __block NSTimeInterval interval = ms / 1000.0;
-    NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:interval target:self selector:@selector(action:) userInfo:callBack repeats:repeats];
-    NSString *keyStr = [NSString stringWithFormat:@"%ld", identifier];
-    NSLog(@"[createTimer] keyStr =%@ ms=%f", keyStr, ms);
-    self.timers[keyStr] = timer;
-    // 超时保护
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timerSafeMaxTime * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
-        if([[self.timers allKeys] containsObject:keyStr]){
-            NSLog(@"【超时保护】发现超过安全时间的定时器：%@，自动清除", keyStr);
-            [self clearTimeout:[keyStr longLongValue]];
-        }else{
-            NSLog(@"【超时保护】没有发现超过安全时间的定时器");
-        }
+    __block long identifier =  timerIdentifier;
+    timerIdentifier += 1;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:interval target:self selector:@selector(action:) userInfo:callBack repeats:repeats];
+        NSString *keyStr = [NSString stringWithFormat:@"%ld", identifier];
+        NSLog(@"[createTimer] keyStr =%@ ms=%f", keyStr, ms);
+        self.timers[keyStr] = timer;
+        
+        // 超时保护
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timerSafeMaxTime * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+            if([[self.timers allKeys] containsObject:keyStr]){
+                NSLog(@"【超时保护】发现超过安全时间的定时器：%@，自动清除", keyStr);
+                [self clearTimeout:[keyStr longLongValue]];
+            }else{
+                NSLog(@"【超时保护】没有发现超过安全时间的定时器");
+            }
+        });
     });
-    
     return identifier;
+
 }
 
 -(void)haha{
