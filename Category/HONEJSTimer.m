@@ -7,7 +7,17 @@
 
 #import "HONEJSTimer.h"
 
-static long timerIdentifier = 1;
+static long timerIdentifier = 1;    //仅本文件可见
+
+// 前端建议15分钟
+#pragma 定时器安全设置
+// 一个定时器允许存在的最长时间
+static int timerSafeMaxTime = 15 * 60 * 1000;
+// 同一时刻最多允许的定时器数量
+static int timerSafeMaxCount = 10;
+
+// 同一时刻最多允许的定时器数量，没有创建定时器返回的标识符
+static int timerSafeMaxReachCountIdentifier = 0;
 
 @interface HONEJSTimer()
 
@@ -42,22 +52,39 @@ static long timerIdentifier = 1;
 
 - (long)setTimeout:(JSValue *)callBack :(float)timeout{
     NSLog(@"timeout =%f", timeout);
-    return [self createTimer:callBack ms:timeout repeats:NO];  
+    return [self createTimer:callBack ms:timeout repeats:NO];
 }
 
 #pragma - Private
 - (long)createTimer:(JSValue *)callBack ms:(double)ms repeats:(BOOL)repeats{
+    if ([self.timers allKeys].count > timerSafeMaxCount) {
+        return timerSafeMaxReachCountIdentifier;
+    }
+    long identifier =  timerIdentifier;
+    timerIdentifier += 1;
+    [self performSelectorOnMainThread:@selector(haha) withObject:nil waitUntilDone:NO];
+
     __block NSTimeInterval interval = ms / 1000.0;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:interval target:self selector:@selector(action:) userInfo:callBack repeats:repeats];
-        NSString *keyStr = [NSString stringWithFormat:@"%ld", timerIdentifier];
-        NSLog(@"[createTimer] keyStr =%@ ms=%f", keyStr, ms);
-        self.timers[keyStr] = timer;
-        timerIdentifier += 1;
+    NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:interval target:self selector:@selector(action:) userInfo:callBack repeats:repeats];
+    NSString *keyStr = [NSString stringWithFormat:@"%ld", identifier];
+    NSLog(@"[createTimer] keyStr =%@ ms=%f", keyStr, ms);
+    self.timers[keyStr] = timer;
+    // 超时保护
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(timerSafeMaxTime * NSEC_PER_MSEC)), dispatch_get_main_queue(), ^{
+        if([[self.timers allKeys] containsObject:keyStr]){
+            NSLog(@"【超时保护】发现超过安全时间的定时器：%@，自动清除", keyStr);
+            [self clearTimeout:[keyStr longLongValue]];
+        }else{
+            NSLog(@"【超时保护】没有发现超过安全时间的定时器");
+        }
     });
-    return timerIdentifier;
+    
+    return identifier;
 }
 
+-(void)haha{
+    
+}
 /// 执行回调
 /// @param timer 定时器
 - (void)action:(NSTimer *)timer{
